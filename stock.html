@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <title>Title</title>
+    <style>
+        *{margin: 0;padding: 0}
+        body,#myCanvas{
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;}
+        em,span,i{
+            font-style: normal;}
+        .chartTips{
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: calc(100% - 20px);
+            height: 100%;
+            margin: 10px;
+        }
+        .chartTips .chartTips-x{
+            position: absolute;
+            border-top: 1px dashed #ccc;
+            width: 100%;
+            left: 0;
+            top: 50px;
+        }
+        .chartTips .chartTips-y{
+            position: absolute;
+            top: 0;
+            border-left: 1px dashed #ccc;
+            height: calc(100% - 46px);
+            left:50px;
+        }
+        .chartTips em{
+            display: block;
+            position: absolute;
+            background: #666;
+            color: #fff;
+            font-size: 12px;
+            padding: 3px;
+            margin-top: -10px;
+        }
+        .chartTips .chartTips-price{
+            left: 0;
+            top: 40px;
+        }
+        .chartTips .chartTips-scale{
+            right: 0;
+            top: 40px;
+        }
+        .chartTips .chartTips-time{
+            left: 33px;
+            bottom: 24px;
+        }
+    </style>
+</head>
+<body>
+    <div style="padding: 10px;position: relative"><canvas id="myCanvas" height="200"></canvas><div class="chartTips"><span class="chartTips-x"></span><span class="chartTips-y"></span><em class="chartTips-price">11.04</em><em class="chartTips-scale">1.01%</em><em class="chartTips-time">10:15</em></div></div>
+
+    <script src="hidpi-canvas.min.js"></script>
+    <script type="text/javascript">
+        fetch({
+            url: 'https://vip-service.bankuang.com/TheTimeTrend.php?symbol=SZ002024&r_type=2',
+            success: function(data){console.log(data)
+                var fsCharts = new Charts('#myCanvas', {
+                    data: data
+                });
+            }
+        });
+        function Charts(selector, config){
+            this.config = config || {};
+            this.selector = selector;
+            this.init();
+        }
+        Charts.prototype.init = function(){
+            var c = document.querySelector(this.selector);
+            this.ctx=c.getContext("2d");
+
+            var getPixelRatio = function (context) {
+                var backingStore = context.backingStorePixelRatio ||
+                        context.webkitBackingStorePixelRatio ||
+                        context.mozBackingStorePixelRatio ||
+                        context.msBackingStorePixelRatio ||
+                        context.oBackingStorePixelRatio ||
+                        context.backingStorePixelRatio || 1;
+
+                return (window.devicePixelRatio || 1) / backingStore;
+            };
+            this.pixelRatio = getPixelRatio(this.ctx);
+            c.style.width = document.body.clientWidth - 20 + 'px';
+            c.style.height = '200px';
+            c.width = (document.body.clientWidth - 20) * this.pixelRatio;
+            c.height = 200 * this.pixelRatio - 20;
+            this.ctx.scale(1/this.pixelRatio, 1/this.pixelRatio);
+            this.cWidth = c.width;
+            this.cHeight = c.height - 20;
+            if(typeof this.config.data !== 'string'){
+                this.frame();
+                this.scale();
+                this.polyline();
+                this.volume();
+                this.hover();
+            }else{
+                this.notOpen();
+            }
+        };
+        Charts.prototype.frame = function(){
+            /* 线框 */
+            this.ctx.beginPath();
+            this.ctx.strokeStyle = "rgba(204, 204, 204, 1)";
+            this.ctx.strokeRect(1, 1, this.cWidth-1.5, this.cHeight - 1.5 - (this.pixelRatio - 1) * 20);
+            this.ctx.lineWidth = 0.5;
+            this.ctx.moveTo(1, this.cHeight*0.325+1);
+            this.ctx.lineTo(this.cWidth, this.cHeight*0.325);
+            this.ctx.moveTo(0, this.cHeight*0.825);
+            this.ctx.lineTo(this.cWidth, this.cHeight*0.825);
+            this.ctx.moveTo(this.cWidth/4-0.5, 0);
+            this.ctx.lineTo(this.cWidth/4-0.5, this.cHeight-0.5);
+            this.ctx.moveTo(this.cWidth/2-0.5, 0);
+            this.ctx.lineTo(this.cWidth/2-0.5, this.cHeight-0.5);
+            this.ctx.moveTo(this.cWidth/4*3-0.5, 0);
+            this.ctx.lineTo(this.cWidth/4*3-0.5, this.cHeight-0.5);
+            this.ctx.stroke();
+        };
+        Charts.prototype.scale = function(){
+            /* 数值刻度 */
+            this.ctx.font = 16 * this.pixelRatio + 'px Georgia';
+            this.ctx.fillStyle = '#666';
+            // 时间刻度
+            this.ctx.fillText('09:30', 0, this.cHeight + 14);
+            this.ctx.fillText('11:30', this.cWidth / 2 - 17, this.cHeight + 14);
+            this.ctx.fillText('15:00', this.cWidth - 40 * this.pixelRatio, this.cHeight + 14);
+
+            var max = Math.max.apply(null, this.timeTrend());
+            // 上次收盘价
+            var lastClose = this.config.data[0].LastClose;
+            var min = (lastClose - (max - lastClose)).toFixed(2);
+            // 最大值
+            this.ctx.fillText(max.toString(), 2*this.pixelRatio, 12*this.pixelRatio);
+
+            // 中间值
+            this.ctx.fillText(lastClose, 2*this.pixelRatio, this.cHeight * 0.325 + 3*this.pixelRatio);
+
+            // 最小值
+            this.ctx.fillText(min, 2*this.pixelRatio, this.cHeight * 0.65 - 5*this.pixelRatio);
+
+            // 百分比中间值
+            this.ctx.fillText('0.00%', this.cWidth - 50*this.pixelRatio, this.cHeight * 0.325 + 3*this.pixelRatio);
+
+            // 百分比最大值
+            var percentage = ((max - lastClose) / lastClose * 100).toFixed(2);
+            this.ctx.fillText(percentage + '%', this.cWidth - 50*this.pixelRatio, 13*this.pixelRatio);
+
+            // 百分比最小值
+            this.ctx.fillText(-percentage + '%', this.cWidth - 54*this.pixelRatio, this.cHeight * 0.65 - 3*this.pixelRatio);
+
+            this.ctx.font = 12 * this.pixelRatio + 'px Arial';
+            // 成交量、成交额
+            this.ctx.fillText('量: ', 3*this.pixelRatio, this.cHeight * 0.65 + 13*this.pixelRatio);
+            // 最新一条数据
+            var latest = this.config.data[this.config.data.length - 1];
+            var volume = this.process(latest.Volume);
+            this.ctx.fillText(volume, 22*this.pixelRatio, this.cHeight * 0.65 + 13*this.pixelRatio);
+            // 成交量数字宽度
+            var volumeWidth = this.ctx.measureText(this.process(this.config.data[this.config.data.length - 1].Volume)).width;
+            this.ctx.fillText('额: ', 28*this.pixelRatio + volumeWidth, this.cHeight * 0.65 + 13*this.pixelRatio);
+            this.ctx.fillText(this.process(latest.Amount), 48*this.pixelRatio + volumeWidth, this.cHeight * 0.65 + 13*this.pixelRatio);
+        };
+        Charts.prototype.timeTrend = function(){    // 成交价
+            var arr = [];
+            this.config.data.map(function(v, i){
+                arr.push(v.TimeTrend)
+            });
+            return arr;
+        };
+        Charts.prototype.volumeArr = function(){    // 成交量
+            var arr = [];
+            this.config.data.map(function(v, i){
+                arr.push(v.Volume)
+            });
+            return arr;
+        };
+        Charts.prototype.polyline = function(){
+            var _self = this;
+            var max = Math.max.apply(null, this.timeTrend());
+            // 上次收盘价
+            var lastClose = this.config.data[0].LastClose;
+            var min = (lastClose - (max - lastClose)).toFixed(2);
+            var firstTrend = (((this.config.data[0].TimeTrend * 100 - min * 100)/100) / ((max * 100 - min * 100)/100)).toFixed(2);
+            var fPoint = this.cHeight * 0.65 * (1 - firstTrend);
+            var fWidth = this.cWidth/240;
+            _self.ctx.beginPath();
+            _self.ctx.strokeStyle = "#1FA3C9";
+            _self.ctx.moveTo(0, fPoint);
+            _self.config.data.map(function(v, i){
+//                console.log(this.cWidth/240)
+                var iTrend = (((v.TimeTrend * 100 - min * 100)/100) / ((max * 100 - min * 100)/100)).toFixed(2);
+                var iPoint = _self.cHeight * 0.65 * (1 - iTrend);
+                _self.ctx.lineTo(fWidth * (i + 1), iPoint);
+            });
+            _self.ctx.lineTo(fWidth * _self.config.data.length, _self.cHeight * 0.65-0.5);
+            _self.ctx.lineTo(0, _self.cHeight * 0.65-0.5);
+            _self.ctx.fillStyle = 'rgba(34, 164, 202, .1)';
+            _self.ctx.fill();
+            _self.ctx.stroke();
+
+            _self.ctx.beginPath();
+            _self.ctx.strokeStyle = '#cccccc';
+            _self.ctx.lineWidth = 1;
+            _self.ctx.moveTo(0, _self.cHeight*0.65 - 0.5);
+            _self.ctx.lineTo(_self.cWidth, _self.cHeight*0.65 - 0.5);
+            _self.ctx.stroke();
+        };
+
+        /* 成交量柱形图 */
+        Charts.prototype.volume = function(){
+            var _self = this;
+            var fWidth = this.cWidth/240;
+            // 成交量最大值
+            var maxVolume = Math.max.apply(null, _self.volumeArr());
+            // 柱形图起点
+            var vHeight = this.cHeight * 0.65 + 18 * this.pixelRatio + 0.5;
+            // 柱形图总高度
+            var aHeight = this.cHeight - (_self.pixelRatio - 1) * 20 - vHeight;
+            _self.config.data.map(function(v, i){
+                _self.ctx.beginPath();
+                _self.ctx.strokeStyle =  v.TimeTrend >= v.LastClose ? "#d85342" : "#6ca584";
+                _self.ctx.moveTo(fWidth * (i + 1), (maxVolume - v.Volume)/maxVolume * aHeight + vHeight-0.5);
+                _self.ctx.lineTo(fWidth * (i + 1), _self.cHeight - (_self.pixelRatio - 1) * 20);
+                _self.ctx.stroke();
+            })
+        };
+
+        Charts.prototype.process = function(value){
+            if(value){
+                if(!isNaN(value)){
+                    value = parseInt(value);
+                    var len = parseInt(Math.abs(value)).toString().length;
+                    value = (len > 8 && (value / 100000000)) || (len > 4 && (value / 10000)) || value;
+                    if(value.toString().indexOf('.') !== -1){
+                        value = value.toFixed(2)
+                    }
+                    value = (len > 8 && value + '亿') || (len > 4 && value + '万') || value
+                }
+            }else{
+                value = '0';
+            }
+            return value;
+        };
+
+        /* 鼠标事件 */
+        Charts.prototype.hover = function(){
+            this.ctx.save();
+            var ele = document.querySelector(this.selector);
+            var tips = document.querySelector('.chartTips');
+            var fWidth = this.cWidth/240/this.pixelRatio;console.log(fWidth)
+            var maxLeft = this.config.data.length * fWidth;
+            var maxTrend = Math.max.apply(null, this.timeTrend());
+            // 上次收盘价
+            var lastClose = this.config.data[0].LastClose;
+            var minTrend = (lastClose - (maxTrend - lastClose)).toFixed(2);
+            var priceEle = tips.querySelector('.chartTips-price');
+            var scaleEle = tips.querySelector('.chartTips-scale');
+            var timeEle = tips.querySelector('.chartTips-time');
+            var _self = this;
+            ele.addEventListener('touchmove', function(e){
+                var touchX = e.touches[0].clientX;
+                var touchY = e.touches[0].clientY;
+                if(touchX >= 10 && touchX <= 350 && touchY > 10 && touchY < 190){
+                    tips.style.display = 'block';
+                    // 竖线的 left 值
+                    tips.querySelector('.chartTips-y').style.left = touchX > maxLeft ? maxLeft + 'px' : touchX - 10 + 'px';
+                    // 当前数据
+                    var currData = _self.config.data[Math.round((touchX-10)/fWidth)];
+                    // 当前数据的价格
+                    var currPrice = currData.TimeTrend;
+                    // 横线的 top 值
+                    var iTrend = (((currPrice * 100 - minTrend * 100)/100) / ((maxTrend * 100 - minTrend * 100)/100)).toFixed(2);
+                    var iPoint = _self.cHeight * 0.65 * (1 - iTrend) / _self.pixelRatio;
+                    tips.querySelector('.chartTips-x').style.top = iPoint + 'px';
+                    priceEle.innerText = currPrice;
+                    priceEle.style.top = iPoint + 'px';
+                    scaleEle.innerText = (((currPrice * 100 - lastClose * 100)/100)/lastClose*100).toFixed(2) + '%';
+                    scaleEle.style.top = iPoint + 'px';
+                    if(touchX > 333){
+                        timeEle.style.left = 'auto';
+                        timeEle.style.right = 0;
+                    }else if(touchX < 33){
+                        timeEle.style.left = 0;
+                        timeEle.style.right = 'auto'
+                    }else{
+                        timeEle.style.left = touchX > maxLeft ? maxLeft + 'px' : touchX - 27 + 'px';
+                        timeEle.style.right = 'auto'
+                    }
+                    timeEle.innerText = currData.Date.substring(11, 16);
+//                    timeEle.innerText = currData.Date.substring(11, 16);
+                    /*console.info(_self.config.data[currData].Date.substring(11, 16));
+                    console.log(touchX + ' + ' + touchY)*/
+                }
+            });
+            ele.addEventListener('touchend', function(){
+                tips.style.display = 'none';
+            })
+        };
+
+        /* 未开盘 */
+        Charts.prototype.notOpen = function(){
+
+        };
+
+        /* ajax方法 */
+        function fetch(obj){
+            var xhr = new XMLHttpRequest();
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    obj.success(JSON.parse(xhr.responseText));
+                }
+            };
+            xhr.open("GET", obj.url);
+            xhr.send();
+        }
+    </script>
+</body>
+</html>
