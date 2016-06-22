@@ -60,15 +60,26 @@
     </style>
 </head>
 <body>
-    <div style="padding: 10px;position: relative"><canvas id="myCanvas" height="200"></canvas><div class="chartTips"><span class="chartTips-x"></span><span class="chartTips-y"></span><em class="chartTips-price">11.04</em><em class="chartTips-scale">1.01%</em><em class="chartTips-time">10:15</em></div></div>
+<div style="padding: 10px;position: relative"><canvas id="myCanvas" height="200"></canvas><div class="chartTips"><span class="chartTips-x"></span><span class="chartTips-y"></span><em class="chartTips-price">11.04</em><em class="chartTips-scale">1.01%</em><em class="chartTips-time">10:15</em></div></div>
+
 
     <script src="hidpi-canvas.min.js"></script>
     <script type="text/javascript">
-        fetch({
+        /*fetch({
             url: 'https://vip-service.bankuang.com/TheTimeTrend.php?symbol=SZ002024&r_type=2',
+            success: function(data){
+                var fsCharts = new Charts('#myCanvas', {
+                    data: data,
+                    type: 't'
+                });
+            }
+        });*/
+        fetch({
+            url: 'http://mkt.bankuang.com/kline.php?symbol=SZ002024&r_type=2&fq=1&num=150&desc=1&page=1&return_t=0',
             success: function(data){console.log(data)
                 var fsCharts = new Charts('#myCanvas', {
-                    data: data
+                    data: data,
+                    type: 'k'
                 });
             }
         });
@@ -99,15 +110,55 @@
             this.ctx.scale(1/this.pixelRatio, 1/this.pixelRatio);
             this.cWidth = c.width;
             this.cHeight = c.height - 20;
-            if(typeof this.config.data !== 'string'){
-                this.frame();
-                this.scale();
-                this.polyline();
-                this.volume();
-                this.hover();
-            }else{
-                this.notOpen();
+            if(this.config.type === 't'){
+                if(typeof this.config.data !== 'string'){
+                    this.frame();
+                    this.scale();
+                    this.polyline();
+                    this.volume();
+                    this.hover();
+                }else{
+                    this.notOpen();
+                }
+            }else if(this.config.type === 'k'){
+                this.kFrame();
+                this.kScale();
+                this.kPolyline();
+                this.kVolume();
             }
+        };
+        /* K线框架 */
+        Charts.prototype.kFrame = function(){console.log((this.cHeight - 1.5 - (this.pixelRatio - 1) * 20))
+            this.ctx.beginPath();
+            this.ctx.strokeStyle = "rgba(204, 204, 204, 1)";
+            this.ctx.strokeRect(1, 1 + 12 * this.pixelRatio, this.cWidth-1.5, this.cHeight - 1.5 - (this.pixelRatio - 1) * 20);
+            this.ctx.lineWidth = 0.5;
+            this.ctx.dashedLineTo(0, this.cHeight * 0.7 * (3/4), this.cWidth, this.cHeight * 0.7 * (3/4));
+            this.ctx.dashedLineTo(0, this.cHeight * 0.7 * 0.5, this.cWidth, this.cHeight * 0.7 * 0.5);
+            this.ctx.dashedLineTo(0, this.cHeight * 0.7 * (1/4), this.cWidth, this.cHeight * 0.7 * (1/4));
+            this.ctx.moveTo(0, this.cHeight * 0.7);
+            this.ctx.lineTo(this.cWidth, this.cHeight * 0.7);
+            this.ctx.stroke();
+        };
+        /* K线数值刻度 */
+        Charts.prototype.kScale = function(){
+            this.ctx.font = 12 * this.pixelRatio + 'px Arial';
+            this.ctx.fillStyle = '#5185ad';
+            this.ctx.fillText('MA5:10.91', 10, 9 * this.pixelRatio);
+            var md5Wdith = this.ctx.measureText('MA5:10.91').width;     // 5日均线宽度
+            this.ctx.fillStyle = '#e3b56a';
+            this.ctx.fillText('MA10:11.04', 16 + md5Wdith, 9 * this.pixelRatio);
+            this.ctx.fillStyle = '#a47fb6';
+            var md10Wdith = this.ctx.measureText('MA10:11.04').width;     // 10日均线宽度
+            this.ctx.fillText('MA30:10.80', 22 + md5Wdith + md10Wdith, 9 * this.pixelRatio);
+        };
+        /* 绘制K线 */
+        Charts.prototype.kPolyline = function(){
+
+        };
+        /* K线柱形图 */
+        Charts.prototype.kVolume = function(){
+
         };
         Charts.prototype.frame = function(){
             /* 线框 */
@@ -120,11 +171,11 @@
             this.ctx.moveTo(0, this.cHeight*0.825);
             this.ctx.lineTo(this.cWidth, this.cHeight*0.825);
             this.ctx.moveTo(this.cWidth/4-0.5, 0);
-            this.ctx.lineTo(this.cWidth/4-0.5, this.cHeight-0.5);
+            this.ctx.lineTo(this.cWidth/4-0.5, this.cHeight-0.5 - (this.pixelRatio - 1) * 20);
             this.ctx.moveTo(this.cWidth/2-0.5, 0);
-            this.ctx.lineTo(this.cWidth/2-0.5, this.cHeight-0.5);
+            this.ctx.lineTo(this.cWidth/2-0.5, this.cHeight-0.5 - (this.pixelRatio - 1) * 20);
             this.ctx.moveTo(this.cWidth/4*3-0.5, 0);
-            this.ctx.lineTo(this.cWidth/4*3-0.5, this.cHeight-0.5);
+            this.ctx.lineTo(this.cWidth/4*3-0.5, this.cHeight-0.5 - (this.pixelRatio - 1) * 20);
             this.ctx.stroke();
         };
         Charts.prototype.scale = function(){
@@ -139,7 +190,8 @@
             var max = Math.max.apply(null, this.timeTrend());
             // 上次收盘价
             var lastClose = this.config.data[0].LastClose;
-            var min = (lastClose - (max - lastClose)).toFixed(2);
+            var min = Math.min.apply(null, this.timeTrend());
+            max - lastClose >= lastClose-min ? min = parseFloat(lastClose - (max - lastClose)).toFixed(2) : max = parseFloat(parseFloat(lastClose) + (lastClose - min)).toFixed(2);
             // 最大值
             this.ctx.fillText(max.toString(), 2*this.pixelRatio, 12*this.pixelRatio);
 
@@ -185,20 +237,20 @@
             });
             return arr;
         };
-        Charts.prototype.polyline = function(){
+        Charts.prototype.polyline = function(){     // 折线图
             var _self = this;
             var max = Math.max.apply(null, this.timeTrend());
             // 上次收盘价
             var lastClose = this.config.data[0].LastClose;
-            var min = (lastClose - (max - lastClose)).toFixed(2);
+            var min = Math.min.apply(null, this.timeTrend());
             var firstTrend = (((this.config.data[0].TimeTrend * 100 - min * 100)/100) / ((max * 100 - min * 100)/100)).toFixed(2);
             var fPoint = this.cHeight * 0.65 * (1 - firstTrend);
             var fWidth = this.cWidth/240;
+            max - lastClose >= lastClose-min ? min = parseFloat(lastClose - (max - lastClose)).toFixed(2) : max = parseFloat(parseFloat(lastClose) + (lastClose - min)).toFixed(2);
             _self.ctx.beginPath();
             _self.ctx.strokeStyle = "#1FA3C9";
             _self.ctx.moveTo(0, fPoint);
             _self.config.data.map(function(v, i){
-//                console.log(this.cWidth/240)
                 var iTrend = (((v.TimeTrend * 100 - min * 100)/100) / ((max * 100 - min * 100)/100)).toFixed(2);
                 var iPoint = _self.cHeight * 0.65 * (1 - iTrend);
                 _self.ctx.lineTo(fWidth * (i + 1), iPoint);
@@ -229,7 +281,7 @@
             var aHeight = this.cHeight - (_self.pixelRatio - 1) * 20 - vHeight;
             _self.config.data.map(function(v, i){
                 _self.ctx.beginPath();
-                _self.ctx.strokeStyle =  v.TimeTrend >= v.LastClose ? "#d85342" : "#6ca584";
+                _self.ctx.strokeStyle =  i > 0 && v.TimeTrend >= _self.config.data[i - 1].TimeTrend ? "#d85342" : "#6ca584";
                 _self.ctx.moveTo(fWidth * (i + 1), (maxVolume - v.Volume)/maxVolume * aHeight + vHeight-0.5);
                 _self.ctx.lineTo(fWidth * (i + 1), _self.cHeight - (_self.pixelRatio - 1) * 20);
                 _self.ctx.stroke();
@@ -258,25 +310,27 @@
             this.ctx.save();
             var ele = document.querySelector(this.selector);
             var tips = document.querySelector('.chartTips');
-            var fWidth = this.cWidth/240/this.pixelRatio;console.log(fWidth)
+            var fWidth = this.cWidth/240/this.pixelRatio;
             var maxLeft = this.config.data.length * fWidth;
             var maxTrend = Math.max.apply(null, this.timeTrend());
             // 上次收盘价
             var lastClose = this.config.data[0].LastClose;
-            var minTrend = (lastClose - (maxTrend - lastClose)).toFixed(2);
+            var minTrend = Math.min.apply(null, this.timeTrend());
             var priceEle = tips.querySelector('.chartTips-price');
             var scaleEle = tips.querySelector('.chartTips-scale');
             var timeEle = tips.querySelector('.chartTips-time');
+            maxTrend - lastClose >= lastClose-minTrend ? minTrend = parseFloat(lastClose - (maxTrend - lastClose)).toFixed(2) : maxTrend = parseFloat(parseFloat(lastClose) + (lastClose - minTrend)).toFixed(2);
             var _self = this;
             ele.addEventListener('touchmove', function(e){
                 var touchX = e.touches[0].clientX;
                 var touchY = e.touches[0].clientY;
-                if(touchX >= 10 && touchX <= 350 && touchY > 10 && touchY < 190){
+                if(touchX >= 10 && touchX <= _self.cWidth/_self.pixelRatio + 10 && touchY > 10 && touchY < _self.cHeight / _self.pixelRatio + 10){
                     tips.style.display = 'block';
                     // 竖线的 left 值
-                    tips.querySelector('.chartTips-y').style.left = touchX > maxLeft ? maxLeft + 'px' : touchX - 10 + 'px';
+                    tips.querySelector('.chartTips-y').style.left = touchX - 10 > maxLeft ? maxLeft + 'px' : touchX - 10 + 'px';
                     // 当前数据
-                    var currData = _self.config.data[Math.round((touchX-10)/fWidth)];
+                    var currNum = touchX - 10 > maxLeft ? parseInt((maxLeft - 10)/(_self.cWidth/_self.pixelRatio) * 240) - 1 : parseInt((touchX - 10)/(_self.cWidth/_self.pixelRatio) * 240) - 1;
+                    var currData = _self.config.data[currNum];
                     // 当前数据的价格
                     var currPrice = currData.TimeTrend;
                     // 横线的 top 值
@@ -284,9 +338,9 @@
                     var iPoint = _self.cHeight * 0.65 * (1 - iTrend) / _self.pixelRatio;
                     tips.querySelector('.chartTips-x').style.top = iPoint + 'px';
                     priceEle.innerText = currPrice;
-                    priceEle.style.top = iPoint + 'px';
+                    priceEle.style.top = iPoint + 2 + 'px';
                     scaleEle.innerText = (((currPrice * 100 - lastClose * 100)/100)/lastClose*100).toFixed(2) + '%';
-                    scaleEle.style.top = iPoint + 'px';
+                    scaleEle.style.top = iPoint + 2 + 'px';
                     if(touchX > 333){
                         timeEle.style.left = 'auto';
                         timeEle.style.right = 0;
@@ -298,9 +352,6 @@
                         timeEle.style.right = 'auto'
                     }
                     timeEle.innerText = currData.Date.substring(11, 16);
-//                    timeEle.innerText = currData.Date.substring(11, 16);
-                    /*console.info(_self.config.data[currData].Date.substring(11, 16));
-                    console.log(touchX + ' + ' + touchY)*/
                 }
             });
             ele.addEventListener('touchend', function(){
@@ -324,6 +375,32 @@
             xhr.open("GET", obj.url);
             xhr.send();
         }
+
+        CanvasRenderingContext2D.prototype.dashedLineTo = function (fromX, fromY, toX, toY, pattern) {
+            // default interval distance -> 5px
+            if (typeof pattern === "undefined") {
+                pattern = 5;
+            }
+
+            // calculate the delta x and delta y
+            var dx = (toX - fromX);
+            var dy = (toY - fromY);
+            var distance = Math.floor(Math.sqrt(dx*dx + dy*dy));
+            var dashlineInteveral = (pattern <= 0) ? distance : (distance/pattern);
+            var deltay = (dy/distance) * pattern;
+            var deltax = (dx/distance) * pattern;
+
+            // draw dash line
+            this.beginPath();
+            for(var dl=0; dl<dashlineInteveral; dl++) {
+                if(dl%2) {
+                    this.lineTo(fromX + dl*deltax, fromY + dl*deltay);
+                } else {
+                    this.moveTo(fromX + dl*deltax, fromY + dl*deltay);
+                }
+            }
+            this.stroke();
+        };
     </script>
 </body>
 </html>
