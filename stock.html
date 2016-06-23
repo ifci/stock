@@ -90,16 +90,16 @@
         }
         Charts.prototype.init = function(){
             var c = document.querySelector(this.selector);
+            this.cData = this.config.data.slice(0, 30).reverse();
             this.ctx=c.getContext("2d");
 
             var getPixelRatio = function (context) {
                 var backingStore = context.backingStorePixelRatio ||
-                        context.webkitBackingStorePixelRatio ||
-                        context.mozBackingStorePixelRatio ||
-                        context.msBackingStorePixelRatio ||
-                        context.oBackingStorePixelRatio ||
-                        context.backingStorePixelRatio || 1;
-
+                    context.webkitBackingStorePixelRatio ||
+                    context.mozBackingStorePixelRatio ||
+                    context.msBackingStorePixelRatio ||
+                    context.oBackingStorePixelRatio ||
+                    context.backingStorePixelRatio || 1;
                 return (window.devicePixelRatio || 1) / backingStore;
             };
             this.pixelRatio = getPixelRatio(this.ctx);
@@ -133,9 +133,10 @@
             this.ctx.strokeStyle = "rgba(204, 204, 204, 1)";
             this.ctx.strokeRect(1, 1 + 12 * this.pixelRatio, this.cWidth-1.5, this.cHeight - 1.5 - (this.pixelRatio - 1) * 20);
             this.ctx.lineWidth = 0.5;
-            this.ctx.dashedLineTo(0, this.cHeight * 0.7 * (3/4), this.cWidth, this.cHeight * 0.7 * (3/4));
-            this.ctx.dashedLineTo(0, this.cHeight * 0.7 * 0.5, this.cWidth, this.cHeight * 0.7 * 0.5);
-            this.ctx.dashedLineTo(0, this.cHeight * 0.7 * (1/4), this.cWidth, this.cHeight * 0.7 * (1/4));
+            var kHeight = this.cHeight * 0.7 - 12 * this.pixelRatio;     // K线区域高度
+            this.ctx.dashedLineTo(0, kHeight * (3/4) + 12 * this.pixelRatio, this.cWidth, kHeight * (3/4) + 12 * this.pixelRatio);
+            this.ctx.dashedLineTo(0, kHeight * 0.5 + 12 * this.pixelRatio, this.cWidth, kHeight * 0.5 + 12 * this.pixelRatio);
+            this.ctx.dashedLineTo(0, kHeight * (1/4) + 12 * this.pixelRatio, this.cWidth, kHeight * (1/4) + 12 * this.pixelRatio);
             this.ctx.moveTo(0, this.cHeight * 0.7);
             this.ctx.lineTo(this.cWidth, this.cHeight * 0.7);
             this.ctx.stroke();
@@ -143,22 +144,99 @@
         /* K线数值刻度 */
         Charts.prototype.kScale = function(){
             this.ctx.font = 12 * this.pixelRatio + 'px Arial';
+            /* MA5 -- 30 */
             this.ctx.fillStyle = '#5185ad';
             this.ctx.fillText('MA5:10.91', 10, 9 * this.pixelRatio);
-            var md5Wdith = this.ctx.measureText('MA5:10.91').width;     // 5日均线宽度
+            var md5Width = this.ctx.measureText('MA5:10.91').width;     // 5日均线宽度
             this.ctx.fillStyle = '#e3b56a';
-            this.ctx.fillText('MA10:11.04', 16 + md5Wdith, 9 * this.pixelRatio);
+            this.ctx.fillText('MA10:11.04', 16 + md5Width, 9 * this.pixelRatio);
             this.ctx.fillStyle = '#a47fb6';
-            var md10Wdith = this.ctx.measureText('MA10:11.04').width;     // 10日均线宽度
-            this.ctx.fillText('MA30:10.80', 22 + md5Wdith + md10Wdith, 9 * this.pixelRatio);
+            var md10Width = this.ctx.measureText('MA10:11.04').width;     // 10日均线宽度
+            this.ctx.fillText('MA30:10.80', 22 + md5Width + md10Width, 9 * this.pixelRatio);
+            this.ctx.fillStyle = '#666';
+            /* K线左边日期 */
+            this.ctx.fillText(this.cData[0].Date, 5 * this.pixelRatio, this.cHeight * .7 + 12 * this.pixelRatio);
+            /* K线右边日期 */
+            this.ctx.fillText(this.cData[this.cData.length - 1].Date, this.cWidth - this.ctx.measureText(this.cData[0].Date).width - 5 * this.pixelRatio, this.cHeight * .7 + 12 * this.pixelRatio);
+            /* 最大值 */
+            var high = Math.max.apply(null, this.fieldAll(this.cData, 'High'));
+            this.ctx.fillText(high.toString(), 5 * this.pixelRatio, 25 * this.pixelRatio);
+            /* 最小值 */
+            var low = Math.min.apply(null, this.fieldAll(this.cData, 'Low'));
+            this.ctx.fillText(low.toString(), 5 * this.pixelRatio, this.cHeight * .7 - 4 * this.pixelRatio);
+            /* 中间值 */
+            var average = (high - low) / 2 + low;
+            this.ctx.fillText(average.toString(), 5 * this.pixelRatio, this.cHeight * .35 + 9 * this.pixelRatio);
         };
         /* 绘制K线 */
         Charts.prototype.kPolyline = function(){
+            var _self = this;
+            var len = this.cData.length;
+            /* 最大值 */
+            var high = Math.max.apply(null, this.fieldAll(this.cData, 'High'));
+            /* 最小值 */
+            var low = Math.min.apply(null, this.fieldAll(this.cData, 'Low'));
+            var squareWidth = this.cWidth / len;
+            var minHeight = this.cHeight * 0.7;     // K线坐标起点位于画布的高度
+            var maxHeight = 1 + 12 * this.pixelRatio;       // K线最大值位于画布的高度
+            var totalDiff = high - low;
+            this.cData.map(function(v, i){
+                _self.ctx.beginPath();
+                if(v.Close >= v.Open){      // 收盘大于开盘，红色
+                    _self.ctx.fillStyle = '#d85342';
+                    _self.ctx.strokeStyle = "#d85342";
+                    _self.ctx.fillRect(1 * _self.pixelRatio + squareWidth * i, (minHeight - maxHeight) * ((high - v.Close) / totalDiff) + maxHeight, squareWidth - 2, (v.Close - v.Open) / totalDiff * (minHeight - maxHeight));
 
+                    console.log(1 * _self.pixelRatio + squareWidth * i + squareWidth / 2)
+                    // 当日最高
+                    _self.ctx.moveTo(1 * _self.pixelRatio + squareWidth * i + squareWidth / 2, (minHeight - maxHeight) * ((high - v.High) / totalDiff) + maxHeight);
+                    _self.ctx.lineTo(1 * _self.pixelRatio + squareWidth * i + squareWidth / 2, (minHeight - maxHeight) * ((high - v.Close) / totalDiff) + maxHeight);
+                    // 当日最低
+                    _self.ctx.moveTo(1 * _self.pixelRatio + squareWidth * i + squareWidth / 2, ((minHeight - maxHeight) * ((high - v.Close) / totalDiff) + maxHeight) + (v.Close - v.Open) / totalDiff * (minHeight - maxHeight));
+                    _self.ctx.lineTo(1 * _self.pixelRatio + squareWidth * i + squareWidth / 2, (minHeight - maxHeight) * ((high - v.Low) / totalDiff) + maxHeight)
+                }else{
+                    _self.ctx.fillStyle = '#6ca584';
+                    _self.ctx.strokeStyle = "#6ca584";
+                    _self.ctx.fillRect(1 * _self.pixelRatio + squareWidth * i, (minHeight - maxHeight) * ((high - v.Open) / totalDiff) + maxHeight, squareWidth - 2, (v.Open - v.Close) / totalDiff * (minHeight - maxHeight));
+
+
+                    // 当日最高
+                    _self.ctx.moveTo(1 * _self.pixelRatio + squareWidth * i + squareWidth / 2, (minHeight - maxHeight) * ((high - v.High) / totalDiff) + maxHeight);
+                    _self.ctx.lineTo(1 * _self.pixelRatio + squareWidth * i + squareWidth / 2, (minHeight - maxHeight) * ((high - v.Close) / totalDiff) + maxHeight);
+                    // 当日最低
+                    _self.ctx.moveTo(1 * _self.pixelRatio + squareWidth * i + squareWidth / 2, ((minHeight - maxHeight) * ((high - v.Close) / totalDiff) + maxHeight) + (v.Close - v.Open) / totalDiff * (minHeight - maxHeight));
+                    _self.ctx.lineTo(1 * _self.pixelRatio + squareWidth * i + squareWidth / 2, (minHeight - maxHeight) * ((high - v.Low) / totalDiff) + maxHeight)
+                }
+                _self.ctx.stroke()
+
+            })
         };
         /* K线柱形图 */
         Charts.prototype.kVolume = function(){
-
+            var _self = this;
+            var fWidth = this.cWidth/30;
+            // 成交量最大值
+            var maxVolume = Math.max.apply(null, _self.fieldAll(_self.cData, 'Volume'));
+            // 柱形图起点
+            var vHeight = this.cHeight * 0.65 + 18 * this.pixelRatio + 0.5;
+            // 柱形图总高度
+            var aHeight = this.cHeight - (_self.pixelRatio - 1) * 20 - vHeight;
+            _self.cData.map(function(v, i){
+                _self.ctx.beginPath();
+                _self.ctx.strokeStyle =  i > 0 && v.TimeTrend >= _self.cData[i - 1].TimeTrend ? "#d85342" : "#6ca584";
+                _self.ctx.fillRect(fWidth * (i + 1), (maxVolume - v.Volume) / maxVolume * aHeight + vHeight - 0.5, fWidth - 2, _self.cHeight - ((maxVolume - v.Volume) / maxVolume * aHeight + vHeight));
+                /*_self.ctx.moveTo(fWidth * (i + 1), (maxVolume - v.Volume)/maxVolume * aHeight + vHeight-0.5);
+                _self.ctx.lineTo(fWidth * (i + 1), _self.cHeight - (_self.pixelRatio - 1) * 20);
+                _self.ctx.stroke();*/
+            })
+        };
+        /* 获取数组某一字段的集合 */
+        Charts.prototype.fieldAll = function(data, field){
+            var arr = [];
+            data.map(function(v, i){
+                arr.push(v[field])
+            });
+            return arr;
         };
         Charts.prototype.frame = function(){
             /* 线框 */
@@ -193,16 +271,16 @@
             var min = Math.min.apply(null, this.timeTrend());
             max - lastClose >= lastClose-min ? min = parseFloat(lastClose - (max - lastClose)).toFixed(2) : max = parseFloat(parseFloat(lastClose) + (lastClose - min)).toFixed(2);
             // 最大值
-            this.ctx.fillText(max.toString(), 2*this.pixelRatio, 12*this.pixelRatio);
+            this.ctx.fillText(max.toString(), 2 * this.pixelRatio, 12 * this.pixelRatio);
 
             // 中间值
-            this.ctx.fillText(lastClose, 2*this.pixelRatio, this.cHeight * 0.325 + 3*this.pixelRatio);
+            this.ctx.fillText(lastClose, 2 * this.pixelRatio, this.cHeight * 0.325 + 3 * this.pixelRatio);
 
             // 最小值
-            this.ctx.fillText(min, 2*this.pixelRatio, this.cHeight * 0.65 - 5*this.pixelRatio);
+            this.ctx.fillText(min, 2 * this.pixelRatio, this.cHeight * 0.65 - 5 * this.pixelRatio);
 
             // 百分比中间值
-            this.ctx.fillText('0.00%', this.cWidth - 50*this.pixelRatio, this.cHeight * 0.325 + 3*this.pixelRatio);
+            this.ctx.fillText('0.00%', this.cWidth - 50 * this.pixelRatio, this.cHeight * 0.325 + 3 * this.pixelRatio);
 
             // 百分比最大值
             var percentage = ((max - lastClose) / lastClose * 100).toFixed(2);
