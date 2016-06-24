@@ -125,6 +125,7 @@
                 this.kScale();
                 this.kPolyline();
                 this.kVolume();
+                this.kHover();
             }
         };
         /* K线框架 */
@@ -167,6 +168,9 @@
             /* 中间值 */
             var average = (high - low) / 2 + low;
             this.ctx.fillText(average.toString(), 5 * this.pixelRatio, this.cHeight * .35 + 9 * this.pixelRatio);
+            /* 成交量 */
+            var volume = Math.max.apply(null, this.fieldAll(this.cData, 'Volume'));
+            this.ctx.fillText('成交量: ' + volume, 5 * this.pixelRatio, this.cHeight * .7 + 24 * this.pixelRatio);
         };
         /* 绘制K线 */
         Charts.prototype.kPolyline = function(){
@@ -187,7 +191,6 @@
                     _self.ctx.strokeStyle = "#d85342";
                     _self.ctx.fillRect(1 * _self.pixelRatio + squareWidth * i, (minHeight - maxHeight) * ((high - v.Close) / totalDiff) + maxHeight, squareWidth - 2, (v.Close - v.Open) / totalDiff * (minHeight - maxHeight));
 
-                    console.log(1 * _self.pixelRatio + squareWidth * i + squareWidth / 2)
                     // 当日最高
                     _self.ctx.moveTo(1 * _self.pixelRatio + squareWidth * i + squareWidth / 2, (minHeight - maxHeight) * ((high - v.High) / totalDiff) + maxHeight);
                     _self.ctx.lineTo(1 * _self.pixelRatio + squareWidth * i + squareWidth / 2, (minHeight - maxHeight) * ((high - v.Close) / totalDiff) + maxHeight);
@@ -218,18 +221,80 @@
             // 成交量最大值
             var maxVolume = Math.max.apply(null, _self.fieldAll(_self.cData, 'Volume'));
             // 柱形图起点
-            var vHeight = this.cHeight * 0.65 + 18 * this.pixelRatio + 0.5;
+            var vHeight = this.cHeight * 0.7 + 18 * this.pixelRatio;
             // 柱形图总高度
-            var aHeight = this.cHeight - (_self.pixelRatio - 1) * 20 - vHeight;
+            var aHeight = this.cHeight - vHeight;console.log(vHeight)
             _self.cData.map(function(v, i){
                 _self.ctx.beginPath();
-                _self.ctx.strokeStyle =  i > 0 && v.TimeTrend >= _self.cData[i - 1].TimeTrend ? "#d85342" : "#6ca584";
-                _self.ctx.fillRect(fWidth * (i + 1), (maxVolume - v.Volume) / maxVolume * aHeight + vHeight - 0.5, fWidth - 2, _self.cHeight - ((maxVolume - v.Volume) / maxVolume * aHeight + vHeight));
+                _self.ctx.fillStyle = v.Close >= v.Open ? "#d85342" : "#6ca584";
+                _self.ctx.fillRect(fWidth * i, (maxVolume - v.Volume) / maxVolume * aHeight + vHeight - 0.5, fWidth - 2, _self.cHeight - ((maxVolume - v.Volume) / maxVolume * aHeight + vHeight));
                 /*_self.ctx.moveTo(fWidth * (i + 1), (maxVolume - v.Volume)/maxVolume * aHeight + vHeight-0.5);
                 _self.ctx.lineTo(fWidth * (i + 1), _self.cHeight - (_self.pixelRatio - 1) * 20);
                 _self.ctx.stroke();*/
             })
         };
+        /* 鼠标事件 */
+        Charts.prototype.kHover = function(){
+            this.ctx.save();
+            var ele = document.querySelector(this.selector);
+            var tips = document.querySelector('.chartTips');
+            var len = this.cData.length;
+            var fWidth = this.cWidth/len/this.pixelRatio;
+            var maxLeft = len * fWidth;
+            var maxVolume = Math.max.apply(null, this.fieldAll(this.cData, 'Volume'));
+            // 上次收盘价
+            var lastClose = this.cData[0].LastClose;
+            var minVolume = Math.min.apply(null, this.fieldAll(this.cData, 'Volume'));
+            var priceEle = tips.querySelector('.chartTips-price');
+            var scaleEle = tips.querySelector('.chartTips-scale');
+            var timeEle = tips.querySelector('.chartTips-time');
+            scaleEle.style.display = 'none';
+            priceEle.style.left = 'auto';
+            priceEle.style.right = '0';
+            timeEle.style.left = '150px';
+            timeEle.style.bottom = '71px';
+            tips.querySelector('.chartTips-y').style.top = '14px';
+            maxVolume - lastClose >= lastClose - minVolume ? minVolume = parseFloat(lastClose - (maxVolume - lastClose)).toFixed(2) : maxVolume = parseFloat(parseFloat(lastClose) + (lastClose - minVolume)).toFixed(2);
+            var _self = this;
+            ele.addEventListener('touchmove', function(e){
+                var touchX = e.touches[0].clientX;
+                var touchY = e.touches[0].clientY;
+                if(touchX >= 10 && touchX <= _self.cWidth/_self.pixelRatio + 10 && touchY > 10 && touchY < _self.cHeight / _self.pixelRatio + 10){
+                    tips.style.display = 'block';
+                    // 竖线的 left 值
+                    tips.querySelector('.chartTips-y').style.left = touchX - 10 > maxLeft ? maxLeft + 'px' : touchX - 10 + 'px';
+                    // 当前数据
+                    var currNum = touchX - 10 > maxLeft ? parseInt((maxLeft - 10)/(_self.cWidth/_self.pixelRatio) * len) - 1 : parseInt((touchX - 10)/(_self.cWidth/_self.pixelRatio) * len) - 1;
+                    var currData = _self.cData[currNum];console.log(currNum)
+                    // 当前数据的价格
+                    var currPrice = currData.Close;
+                    // 横线的 top 值
+                    var iTrend = (((currPrice * 100 - minVolume * 100)/100) / ((maxVolume * 100 - minVolume * 100)/100)).toFixed(2);
+                    var iPoint = _self.cHeight * 0.65 * (1 - iTrend) / _self.pixelRatio;
+                    tips.querySelector('.chartTips-x').style.top = iPoint + 'px';
+                    priceEle.innerText = currPrice;
+                    priceEle.style.top = iPoint + 2 + 'px';
+                    /*scaleEle.innerText = (((currPrice * 100 - lastClose * 100)/100)/lastClose*100).toFixed(2) + '%';
+                    scaleEle.style.top = iPoint + 2 + 'px';*/
+                    if(touchX > document.body.clientWidth - 44){
+                        timeEle.style.left = 'auto';
+                        timeEle.style.right = 0;
+                    }else if(touchX < 44){
+                        timeEle.style.left = 0;
+                        timeEle.style.right = 'auto'
+                    }else{
+                        timeEle.style.left = touchX > maxLeft ? maxLeft + 'px' : touchX - 43 + 'px';
+                        timeEle.style.right = 'auto'
+                    }
+                    timeEle.innerText = currData.Date;
+                }
+            });
+            ele.addEventListener('touchend', function(){
+                tips.style.display = 'none';
+            })
+        };
+
+
         /* 获取数组某一字段的集合 */
         Charts.prototype.fieldAll = function(data, field){
             var arr = [];
